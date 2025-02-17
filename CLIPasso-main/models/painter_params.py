@@ -11,7 +11,7 @@ from scipy.ndimage.filters import gaussian_filter
 from skimage.color import rgb2gray
 from skimage.filters import threshold_otsu
 from torchvision import transforms
-
+from torch.optim import Adam, lr_scheduler  # 确保lr_scheduler也被导入
 
 class Painter(torch.nn.Module):
     def __init__(self, args,
@@ -390,23 +390,34 @@ class Painter(torch.nn.Module):
 
 
 class PainterOptimizer:
-    def __init__(self, args,model_parameters, renderer):
+    def __init__(self, args,cnn_parameter,gcn_parameters, renderer):
         self.renderer = renderer
         self.points_lr = args.lr
         self.color_lr = args.color_lr
         self.args = args
         self.optim_color = args.force_sparse
-        self.model_parameters=model_parameters
+        self.cnn_parameter=cnn_parameter
+        self.gcn_parameters=gcn_parameters
 
     def init_optimizers(self):
         self.points_optim = torch.optim.Adam([
-        {'params': self.renderer.parameters(), 'lr': self.points_lr},
-        {'params': self.model_parameters, 'lr': 0.001}])
-        # self.points_optim = torch.optim.Adam(self.renderer.parameters()+self.model_parameters, lr=self.points_lr)
+            {'params': self.renderer.parameters(), 'lr': self.points_lr},
+            {'params': self.gcn_parameters, 'lr': 0.001}
+        ])
+        # 创建一个独立的优化器，仅包含 cnn_parameter
+        self.cnn_optim = torch.optim.Adam(self.cnn_parameter, lr=0.001)
+
+        # 为 cnn_parameter 创建独立的学习率调度器
+        self.cnn_lr_scheduler = torch.optim.lr_scheduler.StepLR(self.cnn_optim, step_size=30, gamma=0.1)
+
         if self.optim_color:
             self.color_optim = torch.optim.Adam(self.renderer.set_color_parameters(), lr=self.color_lr)
 
     def update_lr(self, counter):
+
+        # 调用cnn_optim的调度器更新cnn_parameter的学习率
+        self.cnn_lr_scheduler.step(counter)  # 每个epoch调用一次
+
         new_lr = utils.get_epoch_lr(counter, self.args)
         for param_group in self.points_optim.param_groups:
             param_group["lr"] = new_lr
@@ -415,15 +426,16 @@ class PainterOptimizer:
         self.points_optim.zero_grad()
         if self.optim_color:
             self.color_optim.zero_grad()
+        self.cnn_optim.zero_grad()  # 对 cnn_optim 也做一次清零梯度操作
 
     def step_(self):
         self.points_optim.step()
         if self.optim_color:
             self.color_optim.step()
+        self.cnn_optim.step()  # 对 cnn_optim 也做一次更新操作
 
     def get_lr(self):
         return self.points_optim.param_groups[0]['lr']
-
 
 class Hook:
     """Attaches to a module and records its activations and gradients."""

@@ -105,19 +105,6 @@ def main(args):
         optimizer.zero_grad_()
         test=[]
 
-            # # 使用新的张量代替原地操作
-            # path.points = path.points.clone()  # 克隆一份 path.points 以避免原地修改
-            # path.points[:, 0] = path.points[:, 0] * 224  # 修改克隆后的张量
-            # path.points[:, 1] = path.points[:, 1]* 224
-        # for i, path in enumerate(renderer.shapes):
-        #     if path.points is not None:
-        #         # 直接打印所有小于 0 的点
-        #         if (path.points < 0).any():  # 如果有任何小于 0 的值
-        #             print(f"Path {i} contains points with negative values:")
-        #             print(path.points[path.points < 0])  # 直接打印小于 0 的点
-        # for i ,path in enumerate(renderer.shapes):
-        #     print(path.points.requires_grad)
-        #get_image返回的是NCWH
         sketches = renderer.get_image().to(args.device)
         losses_dict = loss_func(sketches, inputs.detach(
         ), renderer.get_color_parameters(), renderer, counter, optimizer)

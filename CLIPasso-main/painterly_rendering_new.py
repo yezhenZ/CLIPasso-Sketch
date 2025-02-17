@@ -106,8 +106,7 @@ def main(args):
     #创建模型
     cnnModel = model_rnngcn.SimpleCNN().to(args.device)
     GCNmodel = model_rnngcn.GCN(input_dim=128, output_dim=4).to(args.device)  # 4 是每条bezier曲线控制点的数量
-    model_parameters = list(cnnModel.parameters()) + list(GCNmodel.parameters())
-    optimizer = PainterOptimizer(args, model_parameters, renderer)
+    optimizer = PainterOptimizer(args, list(cnnModel.parameters()),list(GCNmodel.parameters()), renderer)
 
     # 初始化训练
     renderer.set_random_noise(0)
@@ -174,7 +173,8 @@ def main(args):
         if epoch <= 100:
             loss=Mseloss
         else:
-            loss = sum(list(losses_dict.values()))+Mseloss
+            cliploss=sum(list(losses_dict.values()))
+            loss = cliploss+Mseloss*0.01
         loss.backward()
         optimizer.step_()
         max_grad_norm=1.0
@@ -209,8 +209,23 @@ def main(args):
                         best_fc_loss = losses_dict_eval["fc"].item(
                         ) / args.clip_fc_loss_weight
                         best_iter_fc = epoch
-                print(
-                    f"eval iter[{epoch}/{args.num_iter}] loss[{loss.item()}] time[{time.time() - start}]")
+                if epoch <= 100:
+                    print(
+                        f"eval iter[{epoch}/{args.num_iter}] loss[{loss.item()}] time[{time.time() - start}]")
+                    # 保存loss情况
+                    writer.add_scalar("loss_total.", loss.item(), global_step=epoch)
+                else:
+                    print(
+                        f"eval iter[{epoch}/{args.num_iter}] loss_total[{loss.item()}] time[{time.time() - start}],"
+                        f"mseloss[{Mseloss.item()}] ,"
+                        f"cliploss[{cliploss.item()}]"
+                    )
+                    # 保存loss情况
+                    writer.add_scalar("loss_total.", loss.item(), global_step=epoch)
+                    writer.add_scalar("mseloss.", Mseloss.item(), global_step=epoch)
+                    writer.add_scalar("cliploss.", cliploss.item(), global_step=epoch)
+
+
 
                 cur_delta = loss_eval.item() - best_loss
                 if abs(cur_delta) > min_delta:
